@@ -1,0 +1,3 @@
+/build/*
+/cmake-build-debug-esp-idf/
+/managed_components/*
