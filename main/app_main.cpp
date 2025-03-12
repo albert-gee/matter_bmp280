@@ -10,13 +10,17 @@
 #include "bmp280_driver.h"
 #include "matter_manager.h"
 
+#if CHIP_DEVICE_CONFIG_ENABLE_THREAD
+#include <platform/ESP32/OpenthreadLauncher.h>
+#endif
+
 // Logging tag
 static const char *TAG = "   ***app_main***   ";
 
 // BMP280 Sensor Configuration
 #define BMP280_I2C_ADDRESS BMP280_I2C_ADDRESS_76  // BMP280 I2C address (0x76 with SDO connected to GND)
-#define GPIO_NUM_SDA GPIO_NUM_21                  // GPIO pin for I2C SDA line
-#define GPIO_NUM_SCL GPIO_NUM_22                  // GPIO pin for I2C SCL line
+#define GPIO_NUM_SDA GPIO_NUM_27                  // GPIO pin for I2C SDA line
+#define GPIO_NUM_SCL GPIO_NUM_26                  // GPIO pin for I2C SCL line
 #define I2C_PORT_NUM I2C_NUM_0                    // I2C port number
 #define I2C_TIMEOUT_TICKS 1000                    // Timeout for I2C operations (ticks)
 #define SCL_SPEED_HZ 100000                       // I2C clock speed (100 kHz)
@@ -61,6 +65,36 @@ extern "C" void app_main() {
         return;
     }
     ESP_LOGI(TAG, "BMP280 initialized.");
+
+
+
+#if CHIP_DEVICE_CONFIG_ENABLE_THREAD
+#define ESP_OPENTHREAD_DEFAULT_RADIO_CONFIG()                                           \
+{                                                                                   \
+.radio_mode = RADIO_MODE_NATIVE,                                                \
+}
+
+#define ESP_OPENTHREAD_DEFAULT_HOST_CONFIG()                                            \
+{                                                                                   \
+.host_connection_mode = HOST_CONNECTION_MODE_NONE,                              \
+}
+
+#define ESP_OPENTHREAD_DEFAULT_PORT_CONFIG()                                            \
+{                                                                                   \
+.storage_partition_name = "nvs", .netif_queue_size = 10, .task_queue_size = 10, \
+}
+#endif
+
+#if CHIP_DEVICE_CONFIG_ENABLE_THREAD
+    /* Set OpenThread platform config */
+    esp_openthread_platform_config_t config = {
+        .radio_config = ESP_OPENTHREAD_DEFAULT_RADIO_CONFIG(),
+        .host_config = ESP_OPENTHREAD_DEFAULT_HOST_CONFIG(),
+        .port_config = ESP_OPENTHREAD_DEFAULT_PORT_CONFIG(),
+    };
+    set_openthread_platform_config(&config);
+#endif
+
 
     // Initialize Matter
     ESP_LOGI(TAG, "Initializing Matter interface...");

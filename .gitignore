@@ -1,3 +1,5 @@
-/build/*
+/build/
 /cmake-build-debug-esp-idf/
-/managed_components/*
+/managed_components/
+sdkconfig
+sdkconfig.old

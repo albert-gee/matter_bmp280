@@ -19,7 +19,6 @@ include(${ESP_MATTER_PATH}/examples/common/cmake_common/components_include.cmake
 
 # Optional list of additional directories to search for components.
 set(EXTRA_COMPONENT_DIRS
-        "${ESP_MATTER_PATH}/examples/common"
         "${MATTER_SDK_PATH}/config/esp32/components"
         "${ESP_MATTER_PATH}/components"
         ${extra_components_dirs_append})
@@ -31,11 +30,6 @@ project(matter_bmp280)
 # Please do not use it as is.
 if(CONFIG_ENABLE_ENCRYPTED_OTA)
     target_add_binary_data(matter-sensor.elf "esp_image_encryption_key.pem" TEXT)
-endif()
-
-# For ESP32C2, we need to use the relinker to generate the binary
-if(CONFIG_IDF_TARGET_ESP32C2)
-    include(relinker)
 endif()
 
 # Set the C++ standard to C++17
