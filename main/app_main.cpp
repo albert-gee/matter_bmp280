@@ -123,8 +123,6 @@ extern "C" void app_main() {
                                        static_cast<int16_t>(temperature), static_cast<int16_t>(pressure / 10));
             if (err != ESP_OK) {
                 ESP_LOGE(TAG, "Failed to update Matter attributes: %s", esp_err_to_name(err));
-            } else {
-                ESP_LOGI(TAG, "Matter attributes updated successfully.");
             }
         }
 

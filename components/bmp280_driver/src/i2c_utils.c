@@ -93,8 +93,6 @@ esp_err_t i2c_write_register(i2c_master_dev_handle_t master_device_handle, const
                                         i2c_timeout_ms);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to write byte to register 0x%02X: %s", register_address, esp_err_to_name(ret));
-    } else {
-        ESP_LOGI(TAG, "Wrote 0x%02X to register 0x%02X", data, register_address);
     }
     return ret;
 }
@@ -119,8 +117,6 @@ esp_err_t i2c_read_registers(i2c_master_dev_handle_t master_device_handle, const
                                                 length, i2c_timeout_ms);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to perform burst read starting at 0x%02X: %s", start_register, esp_err_to_name(ret));
-    } else {
-        ESP_LOGI(TAG, "Burst read from 0x%02X successful, %d bytes read", start_register, (int)length);
     }
     return ret;
 }

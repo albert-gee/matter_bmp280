@@ -26,5 +26,10 @@ esp_err_t create_temperature_sensor_endpoint(esp_matter::node_t *matter_node, ui
     *endpoint_id = esp_matter::endpoint::get_id(temperature_sensor_endpoint);
     ESP_LOGI(TAG, "Temperature sensor endpoint created with id %d", *endpoint_id);
 
+
+    esp_matter::cluster::binding::config_t config;
+    esp_matter::cluster::binding::create(temperature_sensor_endpoint, &config, esp_matter::CLUSTER_FLAG_SERVER);
+
+
     return ESP_OK;
 }

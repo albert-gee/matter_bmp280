@@ -202,7 +202,6 @@ esp_err_t bmp280_set_config(BMP280 *bmp280, const uint8_t standby_time, const ui
 }
 
 esp_err_t bmp280_read_temperature_pressure(const BMP280 *bmp280, int32_t *temperature, int32_t *pressure) {
-    ESP_LOGI(TAG, "Reading temperature and pressure");
 
     // Check if the sensor has completed its measurement
     uint8_t status;
@@ -222,18 +221,15 @@ esp_err_t bmp280_read_temperature_pressure(const BMP280 *bmp280, int32_t *temper
         ESP_LOGE(TAG, "Failed to read raw data: %s", esp_err_to_name(ret));
         return ret;
     }
-    ESP_LOGI(TAG, "Raw temperature: %ld, Raw pressure: %ld", raw_temp, raw_press);
 
     // Use calibration data to calculate compensated temperature and pressure
     *temperature = bmp280_compensate_temperature(raw_temp, &bmp280->calibration_data);
     *pressure = bmp280_compensate_pressure(raw_press, &bmp280->calibration_data);
-    ESP_LOGI(TAG, "Temperature: %ld°C, Pressure: %ld Pa", *temperature, *pressure);
 
     return ESP_OK;
 }
 
 esp_err_t bmp280_read_raw_data(const BMP280 *bmp280, int32_t *raw_temp, int32_t *raw_press) {
-    ESP_LOGI(TAG, "Reading raw temperature and pressure data");
 
     // Buffer to store the 6 bytes of data read from the BMP280
     // - 3 bytes for pressure (MSB, LSB, XLSB)
@@ -253,20 +249,9 @@ esp_err_t bmp280_read_raw_data(const BMP280 *bmp280, int32_t *raw_temp, int32_t 
         ESP_LOGE(TAG, "Failed to read BMP280 raw data: %d", ret);
         return ret;
     }
-    ESP_LOGI(TAG, "Data from the registers %02X-%02X: %02X %02X %02X %02X %02X %02X",
-             BMP280_REG_PRESS_MSB, BMP280_REG_PRESS_MSB + sizeof(data),
-             data[0], data[1], data[2], data[3], data[4], data[5]);
 
-    // Extract raw pressure value (20-bit) from the first 3 bytes
-    // - data[0]: PRESS_MSB
-    // - data[1]: PRESS_LSB
-    // - data[2]: PRESS_XLSB (only the top 4 bits are used)
     *raw_press = (int32_t) ((data[0] << 12) | (data[1] << 4) | (data[2] >> 4));
 
-    // Extract raw temperature value (20-bit) from the next 3 bytes
-    // - data[3]: TEMP_MSB
-    // - data[4]: TEMP_LSB
-    // - data[5]: TEMP_XLSB (only the top 4 bits are used)
     *raw_temp = (int32_t) ((data[3] << 12) | (data[4] << 4) | (data[5] >> 4));
 
     // Return ESP_OK to indicate the operation was successful
@@ -290,6 +275,5 @@ esp_err_t bmp280_wait_for_measurement(const BMP280 *bmp280) {
         }
     } while (status & BMP280_STATUS_MEASURING); // Wait while Bit 3 is 1
 
-    ESP_LOGI(TAG, "Ready to read temperature and pressure data");
     return ESP_OK;
 }
