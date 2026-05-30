@@ -1,6 +1,10 @@
 #ifndef MATTER_TEMPERATURE_SENSOR_H
 #define MATTER_TEMPERATURE_SENSOR_H
 
+#include <stdint.h>
+#include <esp_err.h>
+#include <esp_matter.h>
+
 /**
  * @brief Create a Matter temperature sensor endpoint.
  *

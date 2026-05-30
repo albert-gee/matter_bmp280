@@ -12,7 +12,7 @@
  * @param[in] event The Matter device event structure.
  * @param[in] arg   Additional argument provided by the caller.
  */
-void matter_event_callback(ChipDeviceEvent *event, intptr_t arg);
+void matter_event_callback(const ChipDeviceEvent *event, intptr_t arg);
 
 /**
  * @brief Handle identification cluster commands for a Matter endpoint.

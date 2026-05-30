@@ -76,7 +76,7 @@ esp_err_t i2c_write_register(i2c_master_dev_handle_t master_device_handle, uint8
  * @param start_register Address of the first register to read.
  * @param data Pointer to a buffer where the read data will be stored.
  * @param length Number of bytes to read from the device.
- * @param i2c_timeout_ms Timeout for the I2C transaction, in FreeRTOS ticks.
+ * @param i2c_timeout_ms Timeout for the I2C transaction, in milliseconds.
  * @return
  *      - ESP_OK: Read operation completed successfully.
  *      - ESP_ERR_INVALID_ARG: Invalid argument (e.g., NULL pointer or length = 0).

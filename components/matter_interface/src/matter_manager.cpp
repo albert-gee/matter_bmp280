@@ -208,13 +208,8 @@ esp_err_t matter_init(uint16_t *temperature_sensor_endpoint_id, uint16_t *pressu
     ESP_LOGI(TAG, "Matter node created");
 
 
-    // Initialize Matter temperature sensor endpoint
-    const auto scaled_min_temperature = static_cast<int16_t>(min_temperature * 100);
-    const auto scaled_max_temperature = static_cast<int16_t>(max_temperature * 100);
-    const auto scaled_initial_temperature = static_cast<int16_t>(initial_temperature * 100);
-
     if (create_temperature_sensor_endpoint(matter_node, temperature_sensor_endpoint_id,
-                                           scaled_min_temperature, scaled_max_temperature, scaled_initial_temperature) != ESP_OK) {
+                                           min_temperature, max_temperature, initial_temperature) != ESP_OK) {
         ESP_LOGE(TAG, "Failed to initialize temperature sensor.");
         return ESP_FAIL;
                                            }
@@ -222,8 +217,9 @@ esp_err_t matter_init(uint16_t *temperature_sensor_endpoint_id, uint16_t *pressu
 
 
     // Initialize Matter pressure sensor endpoint
-    // Scale raw pressures (in hPa) to int16_t-compatible values (in hundredths of kPa)
-    constexpr float scaling_factor = 10.0f; // Converts hPa to kPa and scales to hundredths
+    // Matter PressureMeasurement MeasuredValue is kPa x 10.
+    // The application passes pressure limits and the first sample in hPa, and 1 hPa == 0.1 kPa.
+    constexpr float scaling_factor = 1.0f;
     const auto scaled_min_pressure = static_cast<int16_t>(min_pressure * scaling_factor);
     const auto scaled_max_pressure = static_cast<int16_t>(max_pressure * scaling_factor);
     const auto scaled_initial_pressure = static_cast<int16_t>(initial_pressure * scaling_factor);

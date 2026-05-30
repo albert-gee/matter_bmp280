@@ -50,13 +50,13 @@ typedef struct {
  *
  * @param master_device_handle The I2C master device handle.
  * @param calibration_data Pointer to the structure where the calibration data will be stored.
- * @param i2c_timeout_ticks Timeout for I2C operations in ticks
+ * @param i2c_timeout_ms Timeout for I2C transactions in milliseconds.
  * @return
  *     - ESP_OK: Success
  *     - ESP_ERR_INVALID_ARG: Parameter error
  *     - ESP_FAIL: Sending command error, slave doesn't ACK the transfer.
  */
-esp_err_t bmp280_read_calibration_data(i2c_master_dev_handle_t master_device_handle, BMP280_CalibrationData *calibration_data, uint32_t i2c_timeout_ticks);
+esp_err_t bmp280_read_calibration_data(i2c_master_dev_handle_t master_device_handle, BMP280_CalibrationData *calibration_data, uint32_t i2c_timeout_ms);
 
 /**
  * @brief Compensates the raw temperature data using the calibration data.
