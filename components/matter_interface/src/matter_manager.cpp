@@ -193,7 +193,7 @@ esp_err_t attribute_update_callback(const esp_matter::attribute::callback_type_t
 
 esp_err_t matter_init(uint16_t *temperature_sensor_endpoint_id, uint16_t *pressure_sensor_endpoint_id,
                       const float min_temperature, const float max_temperature, const float initial_temperature,
-                      const float min_pressure, const float max_pressure, const float initial_pressure) {
+                      const int16_t min_pressure, const int16_t max_pressure, const int16_t initial_pressure) {
     // Initialize Matter Node, where
     // - node_config is the configuration object for the nodeset_callback
     // - app_attribute_update_cb is the callback for handling attribute updates for the temperature sensor
@@ -217,14 +217,9 @@ esp_err_t matter_init(uint16_t *temperature_sensor_endpoint_id, uint16_t *pressu
 
 
     // Initialize Matter pressure sensor endpoint
-    // Matter PressureMeasurement MeasuredValue is kPa x 10.
-    // The application passes pressure limits and the first sample in hPa, and 1 hPa == 0.1 kPa.
-    constexpr float scaling_factor = 1.0f;
-    const auto scaled_min_pressure = static_cast<int16_t>(min_pressure * scaling_factor);
-    const auto scaled_max_pressure = static_cast<int16_t>(max_pressure * scaling_factor);
-    const auto scaled_initial_pressure = static_cast<int16_t>(initial_pressure * scaling_factor);
-    // Pass scaled values to the endpoint creation function
-    if (create_pressure_sensor_endpoint(matter_node, pressure_sensor_endpoint_id, scaled_min_pressure, scaled_max_pressure, scaled_initial_pressure) != ESP_OK) {
+    // Pressure values are already in Matter PressureMeasurement MeasuredValue units:
+    // 10 x pressure in kPa.
+    if (create_pressure_sensor_endpoint(matter_node, pressure_sensor_endpoint_id, min_pressure, max_pressure, initial_pressure) != ESP_OK) {
         ESP_LOGE(TAG, "Failed to initialize pressure sensor");
         return ESP_FAIL;
     }
@@ -273,6 +268,8 @@ esp_err_t matter_init(uint16_t *temperature_sensor_endpoint_id, uint16_t *pressu
 
 esp_err_t matter_update_values(const uint16_t temperature_endpoint_id, const uint16_t pressure_sensor_endpoint_id,
                                const int16_t new_temperature, const int16_t new_pressure) {
+    esp_err_t ret = ESP_OK;
+
     // Update temperature
     esp_matter_attr_val_t new_temperature_int = esp_matter_nullable_int16(new_temperature);
     const esp_err_t temperature_ret = esp_matter::attribute::update(
@@ -282,7 +279,7 @@ esp_err_t matter_update_values(const uint16_t temperature_endpoint_id, const uin
         &new_temperature_int);
     if (temperature_ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to update temperature sensor endpoint with new temperature value");
-        return temperature_ret;
+        ret = temperature_ret;
     }
 
     // Update pressure
@@ -294,8 +291,10 @@ esp_err_t matter_update_values(const uint16_t temperature_endpoint_id, const uin
         &new_pressure_int);
     if (pressure_ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to update pressure sensor endpoint with new pressure value");
-        return pressure_ret;
+        if (ret == ESP_OK) {
+            ret = pressure_ret;
+        }
     }
 
-    return ESP_OK;
+    return ret;
 }

@@ -45,9 +45,9 @@ static bool is_valid_pressure_pa(const int32_t pressure) {
            pressure <= static_cast<int32_t>(BMP280_PRESS_MAX_HPA * 100);
 }
 
-static int16_t pressure_pa_to_matter_deci_kpa(const int32_t pressure_pa) {
-    // Matter PressureMeasurement MeasuredValue is kPa x 10; BMP280 reports Pa.
-    // 1 kPa = 1000 Pa, so Pa / 100 gives kPa x 10.
+static int16_t pressure_pa_to_matter_measured_value(const int32_t pressure_pa) {
+    // Matter PressureMeasurement MeasuredValue is 10 x pressure in kPa.
+    // BMP280 reports Pa: pressure_pa / 1000 = kPa, then x 10 => pressure_pa / 100.
     return static_cast<int16_t>(pressure_pa / 100);
 }
 
@@ -124,7 +124,9 @@ extern "C" void app_main() {
     uint16_t temp_sensor_ep_id, press_sensor_ep_id;
     err = matter_init(&temp_sensor_ep_id, &press_sensor_ep_id,
                       BMP280_TEMP_MIN_DEG_CELSIUS, BMP280_TEMP_MAX_DEG_CELSIUS, temperature / 100.0f,
-                      BMP280_PRESS_MIN_HPA, BMP280_PRESS_MAX_HPA, pressure / 100.0f);
+                      pressure_pa_to_matter_measured_value(static_cast<int32_t>(BMP280_PRESS_MIN_HPA * 100)),
+                      pressure_pa_to_matter_measured_value(static_cast<int32_t>(BMP280_PRESS_MAX_HPA * 100)),
+                      pressure_pa_to_matter_measured_value(pressure));
     if (err != ESP_OK) {
         ESP_LOGE(TAG, "Matter initialization failed: %s", esp_err_to_name(err));
         return;
@@ -153,7 +155,7 @@ extern "C" void app_main() {
 
                 err = matter_update_values(temp_sensor_ep_id, press_sensor_ep_id,
                                            static_cast<int16_t>(temperature),
-                                           pressure_pa_to_matter_deci_kpa(pressure));
+                                           pressure_pa_to_matter_measured_value(pressure));
                 if (err != ESP_OK) {
                     consecutive_failures++;
                     ESP_LOGE(TAG, "Failed to update Matter attributes: %s; Matter values are stale for %lu update(s)",
