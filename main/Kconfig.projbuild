@@ -3,15 +3,17 @@ menu "BMP280 configuration"
 config BMP280_I2C_SDA_GPIO
     int "BMP280 I2C SDA GPIO"
     range 0 27
-    default 21
+    default 10
     help
-        GPIO connected to the BMP280 SDA pin.
+        GPIO connected to the BMP280 SDA pin. GPIO10 is exposed on J3 of
+        ESP32-H2-DevKitM-1 and is otherwise unused by this application.
 
 config BMP280_I2C_SCL_GPIO
     int "BMP280 I2C SCL GPIO"
     range 0 27
-    default 22
+    default 11
     help
-        GPIO connected to the BMP280 SCL pin.
+        GPIO connected to the BMP280 SCL pin. GPIO11 is exposed on J3 of
+        ESP32-H2-DevKitM-1 and is otherwise unused by this application.
 
 endmenu

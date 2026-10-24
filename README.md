@@ -8,7 +8,7 @@ This project implements a Matter-over-Thread pressure and temperature sensor for
 
 ### Hardware
 
-- ESP32-DevKitM-1 or ESP32-H2 board
+- ESP32-H2-DevKitM-1
 - BMP280 Pressure and Temperature Sensor Module
 - Breadboard and connecting wires
 - 3.3V power supply
@@ -16,8 +16,8 @@ This project implements a Matter-over-Thread pressure and temperature sensor for
 ### Software
 
 - **Ubuntu 24.04** or **24.10**
-- **ESP-IDF 5.2.3** (newer versions should be tested)
-- **ESP-Matter 1.3** (newer versions should be tested)
+- **ESP-IDF 5.3.2**
+- **ESP-Matter release/v1.4.2** (`4cedd4ad40821933d6cc237e80ab6604f2953fb0`)
 
 ---
 
@@ -36,7 +36,7 @@ sudo apt-get install git wget flex bison gperf python3 python3-pip python3-venv 
 ```bash
 mkdir -p ~/esp
 cd ~/esp
-git clone -b v5.2.3 --recursive https://github.com/espressif/esp-idf.git
+git clone -b v5.3.2 --recursive https://github.com/espressif/esp-idf.git
 ```
 
 **Step 3. Set up the Tools:**
@@ -74,7 +74,7 @@ sudo apt-get install git gcc g++ pkg-config libssl-dev libdbus-1-dev libglib2.0-
 
 ```bash
 cd ~/esp/
-git clone -b release/v1.3 --recursive https://github.com/espressif/esp-matter.git
+git clone -b release/v1.4.2 --recursive https://github.com/espressif/esp-matter.git
 ```
 
 **Step 3. Bootstrap esp-matter:**
@@ -112,14 +112,15 @@ To connect the BMP280 sensor to the ESP32-H2, use the following default wiring. 
 |------------|------------|
 | VCC        | 3.3V       |
 | GND        | GND        |
-| SDA        | GPIO21     |
-| SCL        | GPIO22     |
+| SDA        | GPIO10 (J3 pin 4) |
+| SCL        | GPIO11 (J3 pin 5) |
 | SDO        | GND        |
 
 ### Notes:
 
 1. Ensure that the **VCC pin** of the BMP280 is connected to the 3.3V pin of the ESP32 to avoid overvoltage damage.
 2. The **SDO pin** of the BMP280 should be connected to GND for an I2C address of `0x76`.
+3. GPIO10 and GPIO11 are exposed on the ESP32-H2-DevKitM-1 J3 header and are not used by this application. GPIO8 is reserved for the board RGB LED, GPIO9 is BOOT, GPIO23/GPIO24 are UART, and GPIO26/GPIO27 are USB.
 
 ---
 
@@ -128,8 +129,8 @@ To connect the BMP280 sensor to the ESP32-H2, use the following default wiring. 
 ### Step 1. Clone the Repository
 
 ```bash
-git clone https://github.com/<your-repo>/matter-bmp280.git
-cd matter-bmp280
+git clone git@github.com:albert-gee/matter_bmp280.git
+cd matter_bmp280
 ```
 
 ### Step 2. Configure the Project
@@ -140,7 +141,7 @@ Use `menuconfig` to configure project-specific settings:
 idf.py menuconfig
 ```
 
-- Set `BMP280 I2C SDA GPIO` and `BMP280 I2C SCL GPIO` to match your wiring (defaults: GPIO21/GPIO22).
+- Set `BMP280 I2C SDA GPIO` and `BMP280 I2C SCL GPIO` to match your wiring (ESP32-H2-DevKitM-1 defaults: GPIO10/GPIO11).
 - Enable or disable features like CHIP Shell or OTA based on your requirements.
 
 ### Step 3. Set ESP32-H2 as the Target Device
@@ -183,6 +184,7 @@ This project is licensed under the MIT License. See the `LICENSE` file for detai
 
 ## References
 
-- [BMP280 Datasheet](https://cdn-shop.adafruit.com/datasheets/BST-BMP280-DS001-11.pdf)
+- [Bosch BMP280 Datasheet](https://www.bosch-sensortec.com/media/boschsensortec/downloads/datasheets/bst-bmp280-ds001.pdf)
+- [ESP32-H2-DevKitM-1 Header Reference](https://docs.espressif.com/projects/esp-dev-kits/en/latest/esp32h2/esp32-h2-devkitm-1/user_guide.html#header-block)
 - [Espressif Matter Documentation](https://docs.espressif.com/projects/esp-matter/en/latest/)
 - [Matter Protocol Specification](https://csa-iot.org/all-solutions/matter/)

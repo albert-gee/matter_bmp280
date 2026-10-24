@@ -39,15 +39,20 @@ esp_err_t i2c_init(i2c_port_t i2c_port, uint16_t i2c_address, gpio_num_t sda_gpi
  * Releases resources allocated during I2C initialization. This includes removing the device from the bus,
  * deinitializing the bus, and freeing associated handles.
  *
- * @param[in] master_bus_handle Handle to the I2C master bus.
- * @param[in] master_dev_handle Handle to the I2C master device.
+ * Each non-NULL handle is released independently. A handle is set to NULL only
+ * after the corresponding ESP-IDF resource was released successfully, so a
+ * caller can retry cleanup after a partial failure.
+ *
+ * @param[in,out] master_bus_handle Pointer to the I2C master bus handle.
+ * @param[in,out] master_dev_handle Pointer to the I2C master device handle.
  *
  * @return
  *     - ESP_OK: Successfully cleaned up I2C resources.
  *     - ESP_ERR_INVALID_ARG: Provided device handle is invalid.
  *     - ESP_FAIL: Failed to remove the device or release resources.
  */
-esp_err_t i2c_cleanup(i2c_master_bus_handle_t master_bus_handle, i2c_master_dev_handle_t master_dev_handle);
+esp_err_t i2c_cleanup(i2c_master_bus_handle_t *master_bus_handle,
+                      i2c_master_dev_handle_t *master_dev_handle);
 
 /**
  * @brief Writes a single byte to a specific register on an I2C device.

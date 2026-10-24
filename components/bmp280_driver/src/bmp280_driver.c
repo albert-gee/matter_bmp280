@@ -5,12 +5,15 @@
 #include <freertos/task.h>
 #include <portmacro.h>
 #include <esp_timer.h>
+#include <stdbool.h>
 #include <string.h>
 
 #include "bmp280_driver.h"
 #include "i2c_utils.h"
 
 static const char *TAG = "   ***bmp280_driver***   ";
+#define BMP280_CTRL_MEAS_SETTINGS_MASK 0xFCU
+#define BMP280_CTRL_MEAS_MODE_MASK 0x03U
 static esp_err_t bmp280_verify_operating_configuration(const BMP280 *bmp280);
 
 esp_err_t bmp280_init(BMP280 *bmp280, const uint16_t i2c_address, const i2c_port_t i2c_port,
@@ -23,6 +26,15 @@ esp_err_t bmp280_init(BMP280 *bmp280, const uint16_t i2c_address, const i2c_port
         standby_time > BMP280_STANDBY_TIME_4000_MS ||
         filter > BMP280_FILTER_COEFF_16) {
         return ESP_ERR_INVALID_ARG;
+    }
+
+    if (bmp280->i2c_master_bus_handle != NULL || bmp280->i2c_master_dev_handle != NULL) {
+        const esp_err_t cleanup_ret = bmp280_deinit(bmp280);
+        if (cleanup_ret != ESP_OK) {
+            ESP_LOGE(TAG, "Cannot reinitialize while I2C cleanup is incomplete: %s",
+                     esp_err_to_name(cleanup_ret));
+            return cleanup_ret;
+        }
     }
 
     memset(bmp280, 0, sizeof(*bmp280));
@@ -88,10 +100,20 @@ esp_err_t bmp280_init(BMP280 *bmp280, const uint16_t i2c_address, const i2c_port
     }
 
     // Enter the requested operating mode only after CONFIG has been accepted.
-    ret = bmp280_set_ctrl_meas(bmp280, oversampling_temp, oversampling_press, mode);
+    // Forced mode is armed but left sleeping here; each read triggers exactly
+    // one fresh conversion.
+    const uint8_t initial_mode = mode == BMP280_MODE_FORCED ? BMP280_MODE_SLEEP : mode;
+    ret = bmp280_set_ctrl_meas(bmp280, oversampling_temp, oversampling_press, initial_mode);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to enable BMP280 operating mode: %s", esp_err_to_name(ret));
         goto fail;
+    }
+    if (mode == BMP280_MODE_FORCED) {
+        bmp280->mode = BMP280_MODE_FORCED;
+        bmp280->expected_ctrl_meas =
+            (uint8_t)((oversampling_temp << BMP280_OSRS_T_POS) |
+                      (oversampling_press << BMP280_OSRS_P_POS) |
+                      BMP280_MODE_FORCED);
     }
 
     ret = bmp280_verify_operating_configuration(bmp280);
@@ -105,7 +127,14 @@ esp_err_t bmp280_init(BMP280 *bmp280, const uint16_t i2c_address, const i2c_port
     return ESP_OK;
 
 fail:
-    (void)bmp280_deinit(bmp280);
+    {
+        const esp_err_t cleanup_ret = bmp280_deinit(bmp280);
+        if (cleanup_ret != ESP_OK) {
+            ESP_LOGE(TAG, "BMP280 initialization cleanup failed: %s",
+                     esp_err_to_name(cleanup_ret));
+            return cleanup_ret;
+        }
+    }
     return ret;
 }
 
@@ -113,17 +142,8 @@ esp_err_t bmp280_deinit(BMP280 *bmp280) {
     if (bmp280 == NULL) {
         return ESP_ERR_INVALID_ARG;
     }
-    if (bmp280->i2c_master_bus_handle == NULL || bmp280->i2c_master_dev_handle == NULL) {
-        bmp280->i2c_master_bus_handle = NULL;
-        bmp280->i2c_master_dev_handle = NULL;
-        return ESP_OK;
-    }
-
-    const esp_err_t ret = i2c_cleanup(bmp280->i2c_master_bus_handle,
-                                      bmp280->i2c_master_dev_handle);
-    bmp280->i2c_master_bus_handle = NULL;
-    bmp280->i2c_master_dev_handle = NULL;
-    return ret;
+    return i2c_cleanup(&bmp280->i2c_master_bus_handle,
+                       &bmp280->i2c_master_dev_handle);
 }
 
 esp_err_t bmp280_verify(const BMP280 *bmp280) {
@@ -206,7 +226,7 @@ esp_err_t bmp280_set_ctrl_meas(BMP280 *bmp280, const int oversampling_temp, cons
     // Construct the CTRL_MEAS register
     const uint8_t ctrl_meas = (oversampling_temp << BMP280_OSRS_T_POS) | // Shift temperature oversampling
                               (oversampling_press << BMP280_OSRS_P_POS) | // Shift pressure oversampling
-                              mode; // Set normal mode
+                              mode;
 
     // Write the CTRL_MEAS register to the sensor
     const esp_err_t ret = i2c_write_register(
@@ -216,6 +236,7 @@ esp_err_t bmp280_set_ctrl_meas(BMP280 *bmp280, const int oversampling_temp, cons
         bmp280->i2c_timeout_ms);
     if (ret == ESP_OK) {
         bmp280->expected_ctrl_meas = ctrl_meas;
+        bmp280->mode = (uint8_t)mode;
     }
     return ret;
 }
@@ -295,7 +316,16 @@ static esp_err_t bmp280_verify_operating_configuration(const BMP280 *bmp280) {
         return ret;
     }
 
-    if (chip_id != BMP280_ID_VALUE || ctrl_meas != bmp280->expected_ctrl_meas ||
+    const uint8_t actual_mode = ctrl_meas & BMP280_CTRL_MEAS_MODE_MASK;
+    const bool persistent_settings_match =
+        (ctrl_meas & BMP280_CTRL_MEAS_SETTINGS_MASK) ==
+        (bmp280->expected_ctrl_meas & BMP280_CTRL_MEAS_SETTINGS_MASK);
+    const bool mode_matches = bmp280->mode == BMP280_MODE_FORCED
+                                  ? (actual_mode == BMP280_MODE_SLEEP ||
+                                     actual_mode == BMP280_MODE_FORCED)
+                                  : actual_mode == bmp280->mode;
+
+    if (chip_id != BMP280_ID_VALUE || !persistent_settings_match || !mode_matches ||
         config != bmp280->expected_config) {
         ESP_LOGW(TAG,
                  "BMP280 configuration lost: id=0x%02x ctrl=0x%02x/0x%02x config=0x%02x/0x%02x",
@@ -315,6 +345,24 @@ esp_err_t bmp280_read_temperature_pressure(const BMP280 *bmp280, int32_t *temper
     esp_err_t ret = bmp280_verify_operating_configuration(bmp280);
     if (ret != ESP_OK) {
         return ret;
+    }
+
+    if (bmp280->mode == BMP280_MODE_SLEEP) {
+        ESP_LOGW(TAG, "Cannot read a measurement while BMP280 is in sleep mode");
+        return ESP_ERR_INVALID_STATE;
+    }
+    if (bmp280->mode == BMP280_MODE_FORCED) {
+        /* A forced conversion automatically returns to sleep. Trigger a fresh
+         * conversion for every read, then wait at least one RTOS tick so either
+         * the conversion has completed or the measuring bit is observable. */
+        ret = i2c_write_register(bmp280->i2c_master_dev_handle,
+                                 BMP280_REG_CTRL_MEAS,
+                                 bmp280->expected_ctrl_meas,
+                                 bmp280->i2c_timeout_ms);
+        if (ret != ESP_OK) {
+            return ret;
+        }
+        vTaskDelay(1);
     }
 
     ret = bmp280_wait_for_measurement(bmp280);

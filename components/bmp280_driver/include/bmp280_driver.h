@@ -130,6 +130,7 @@ typedef struct {
     uint32_t i2c_timeout_ms; /**< Timeout for I2C operations in milliseconds. */
     uint8_t expected_ctrl_meas; /**< CTRL_MEAS value expected during operation. */
     uint8_t expected_config; /**< CONFIG value expected during operation. */
+    uint8_t mode; /**< Requested operating mode; forced mode is retriggered for every read. */
 } BMP280;
 
 /**
@@ -142,7 +143,9 @@ typedef struct {
  * - Configuring the control measurement register (CTRL_MEAS) for oversampling and mode.
  * - Configuring the configuration register (CONFIG) for standby time and filter settings.
  *
- * @param bmp280 Pointer to a BMP280 structure to hold sensor state and configuration.
+ * @param bmp280 Pointer to a zero-initialized BMP280 structure. If it retains
+ *               resources from a partial cleanup, initialization retries that
+ *               cleanup before changing the structure.
  * @param i2c_address I2C address of the BMP280 sensor (0x76 or 0x77 based on SDO pin configuration).
  * @param i2c_port I2C port to use (e.g., I2C_NUM_0 or I2C_NUM_1).
  * @param i2c_timeout_ms Timeout for I2C operations in milliseconds.

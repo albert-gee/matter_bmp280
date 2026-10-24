@@ -16,8 +16,10 @@ esp_err_t i2c_init(const i2c_port_t i2c_port, const uint16_t i2c_address, const 
         return ESP_ERR_INVALID_ARG;
     }
 
-    *master_bus_handle = NULL;
-    *master_dev_handle = NULL;
+    if (*master_bus_handle != NULL || *master_dev_handle != NULL) {
+        ESP_LOGE(TAG, "I2C handles must be cleaned up before initialization");
+        return ESP_ERR_INVALID_STATE;
+    }
 
     // Allocate and initialize an I2C master bus
     ESP_LOGI(TAG, "Initializing I2C master bus...");
@@ -40,8 +42,12 @@ esp_err_t i2c_init(const i2c_port_t i2c_port, const uint16_t i2c_address, const 
     ret = i2c_master_probe(*master_bus_handle, i2c_address, 100); // 100 ms timeout
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to probe I2C device at address 0x%02X: %s", i2c_address, esp_err_to_name(ret));
-        i2c_del_master_bus(*master_bus_handle); // Cleanup bus
-        *master_bus_handle = NULL;
+        const esp_err_t cleanup_ret = i2c_cleanup(master_bus_handle, master_dev_handle);
+        if (cleanup_ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to clean up I2C bus after probe failure: %s",
+                     esp_err_to_name(cleanup_ret));
+            return cleanup_ret;
+        }
         return ret;
     }
 
@@ -55,8 +61,12 @@ esp_err_t i2c_init(const i2c_port_t i2c_port, const uint16_t i2c_address, const 
     ret = i2c_master_bus_add_device(*master_bus_handle, &sensor_config, master_dev_handle);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to add I2C device to the bus: %s", esp_err_to_name(ret));
-        i2c_del_master_bus(*master_bus_handle); // Cleanup bus
-        *master_bus_handle = NULL;
+        const esp_err_t cleanup_ret = i2c_cleanup(master_bus_handle, master_dev_handle);
+        if (cleanup_ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to clean up I2C bus after device-add failure: %s",
+                     esp_err_to_name(cleanup_ret));
+            return cleanup_ret;
+        }
         return ret;
     }
 
@@ -66,24 +76,29 @@ esp_err_t i2c_init(const i2c_port_t i2c_port, const uint16_t i2c_address, const 
     return ESP_OK;
 }
 
-esp_err_t i2c_cleanup(i2c_master_bus_handle_t master_bus_handle, i2c_master_dev_handle_t master_dev_handle) {
-    if (!master_dev_handle || !master_bus_handle) {
-        ESP_LOGE(TAG, "Master bus or device handle is NULL");
+esp_err_t i2c_cleanup(i2c_master_bus_handle_t *master_bus_handle,
+                      i2c_master_dev_handle_t *master_dev_handle) {
+    if (master_bus_handle == NULL || master_dev_handle == NULL) {
+        ESP_LOGE(TAG, "Master bus or device handle pointer is NULL");
         return ESP_ERR_INVALID_ARG;
     }
 
-    // Remove the device from the bus
-    esp_err_t ret = i2c_master_bus_rm_device(master_dev_handle);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to remove I2C device: %s", esp_err_to_name(ret));
-        return ret;
+    if (*master_dev_handle != NULL) {
+        const esp_err_t ret = i2c_master_bus_rm_device(*master_dev_handle);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to remove I2C device: %s", esp_err_to_name(ret));
+            return ret;
+        }
+        *master_dev_handle = NULL;
     }
 
-    // Delete the bus
-    ret = i2c_del_master_bus(master_bus_handle);
-    if (ret != ESP_OK) {
-        ESP_LOGE(TAG, "Failed to delete I2C bus: %s", esp_err_to_name(ret));
-        return ret;
+    if (*master_bus_handle != NULL) {
+        const esp_err_t ret = i2c_del_master_bus(*master_bus_handle);
+        if (ret != ESP_OK) {
+            ESP_LOGE(TAG, "Failed to delete I2C bus: %s", esp_err_to_name(ret));
+            return ret;
+        }
+        *master_bus_handle = NULL;
     }
 
     ESP_LOGI(TAG, "I2C cleaned up successfully");
