@@ -2,17 +2,32 @@
 #include <esp_err.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/projdefs.h>
+#include <freertos/task.h>
 #include <portmacro.h>
+#include <esp_timer.h>
+#include <string.h>
 
 #include "bmp280_driver.h"
 #include "i2c_utils.h"
 
 static const char *TAG = "   ***bmp280_driver***   ";
+static esp_err_t bmp280_verify_operating_configuration(const BMP280 *bmp280);
 
 esp_err_t bmp280_init(BMP280 *bmp280, const uint16_t i2c_address, const i2c_port_t i2c_port,
-    const uint32_t i2c_timeout_ticks, const uint32_t i2c_clk_speed, const gpio_num_t sda_gpio,
+    const uint32_t i2c_timeout_ms, const uint32_t i2c_clk_speed, const gpio_num_t sda_gpio,
     const gpio_num_t scl_gpio, const uint8_t oversampling_temp, const uint8_t oversampling_press, const uint8_t mode,
     const uint8_t standby_time, const uint8_t filter) {
+    if (bmp280 == NULL || i2c_timeout_ms == 0U ||
+        oversampling_temp > BMP280_OSRS_T_X16 || oversampling_press > BMP280_OSRS_P_X16 ||
+        (mode != BMP280_MODE_SLEEP && mode != BMP280_MODE_FORCED && mode != BMP280_MODE_NORMAL) ||
+        standby_time > BMP280_STANDBY_TIME_4000_MS ||
+        filter > BMP280_FILTER_COEFF_16) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    memset(bmp280, 0, sizeof(*bmp280));
+    bmp280->i2c_timeout_ms = i2c_timeout_ms;
+
     // Initialize the I2C bus for communication with the BMP280 sensor
     esp_err_t ret = i2c_init(
         i2c_port,                       // I2C port number
@@ -28,70 +43,94 @@ esp_err_t bmp280_init(BMP280 *bmp280, const uint16_t i2c_address, const i2c_port
         return ret; // Exit initialization if I2C initialization fails
     }
 
-    // Set the I2C operation timeout in FreeRTOS ticks
-    bmp280->i2c_timeout_ticks = pdMS_TO_TICKS(i2c_timeout_ticks);
-
     // Verify the sensor
     ret = bmp280_verify(bmp280);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to verify BMP280 sensor: %s", esp_err_to_name(ret));
-        return ret; // Exit initialization if sensor verification fails
+        goto fail;
     }
 
     // Reset the sensor to start in a known state
     ret = bmp280_reset(bmp280);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to reset BMP280 sensor: %s", esp_err_to_name(ret));
-        return ret; // Exit initialization if sensor reset fails
+        goto fail;
     }
 
     // Read and store the calibration data
     ret = bmp280_read_calibration_data(
         bmp280->i2c_master_dev_handle,
         &bmp280->calibration_data,
-        bmp280->i2c_timeout_ticks
+        bmp280->i2c_timeout_ms
     );
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to read BMP280 calibration data: %s", esp_err_to_name(ret));
-        return ret; // Exit initialization if calibration data cannot be read
+        goto fail;
     }
 
-    // Validate oversampling and mode settings
-    if (oversampling_temp > BMP280_OSRS_T_X16 || oversampling_press > BMP280_OSRS_P_X16 || mode > BMP280_MODE_NORMAL) {
-        ESP_LOGE(TAG, "Invalid oversampling or mode configuration: Temp=%d, Press=%d, Mode=%d",
-                 oversampling_temp, oversampling_press, mode);
-        return ESP_ERR_INVALID_ARG; // Return error for invalid settings
-    }
-
-    // Set oversampling and power mode settings
+    // Program CONFIG while sleeping; normal-mode CONFIG writes may be ignored.
     ret = bmp280_set_ctrl_meas(
         bmp280,
-        oversampling_temp,  // Oversampling for temperature
-        oversampling_press, // Oversampling for pressure
-        mode                // Power mode
+        oversampling_temp,
+        oversampling_press,
+        BMP280_MODE_SLEEP
     );
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to set BMP280 control measurement settings: %s", esp_err_to_name(ret));
-        return ret; // Exit initialization if control measurement settings fail
+        goto fail;
     }
 
     // Configure standby time and filter settings
     ret = bmp280_set_config(bmp280, standby_time, filter);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to set BMP280 configuration settings: %s", esp_err_to_name(ret));
-        return ret; // Exit initialization if configuration settings fail
+        goto fail;
+    }
+
+    // Enter the requested operating mode only after CONFIG has been accepted.
+    ret = bmp280_set_ctrl_meas(bmp280, oversampling_temp, oversampling_press, mode);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "Failed to enable BMP280 operating mode: %s", esp_err_to_name(ret));
+        goto fail;
+    }
+
+    ret = bmp280_verify_operating_configuration(bmp280);
+    if (ret != ESP_OK) {
+        ESP_LOGE(TAG, "BMP280 configuration verification failed: %s", esp_err_to_name(ret));
+        goto fail;
     }
 
     ESP_LOGI(TAG, "BMP280 initialization complete with Temp_OSR=%d, Press_OSR=%d, Mode=%d",
              oversampling_temp, oversampling_press, mode);
-    return ESP_OK; // Return success if all initialization steps are completed
+    return ESP_OK;
+
+fail:
+    (void)bmp280_deinit(bmp280);
+    return ret;
+}
+
+esp_err_t bmp280_deinit(BMP280 *bmp280) {
+    if (bmp280 == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+    if (bmp280->i2c_master_bus_handle == NULL || bmp280->i2c_master_dev_handle == NULL) {
+        bmp280->i2c_master_bus_handle = NULL;
+        bmp280->i2c_master_dev_handle = NULL;
+        return ESP_OK;
+    }
+
+    const esp_err_t ret = i2c_cleanup(bmp280->i2c_master_bus_handle,
+                                      bmp280->i2c_master_dev_handle);
+    bmp280->i2c_master_bus_handle = NULL;
+    bmp280->i2c_master_dev_handle = NULL;
+    return ret;
 }
 
 esp_err_t bmp280_verify(const BMP280 *bmp280) {
     // Read the chip ID of the BMP280 device
     uint8_t chip_id = 0;
     esp_err_t result = i2c_read_registers(bmp280->i2c_master_dev_handle, BMP280_REG_ID, &chip_id, 1,
-                                          bmp280->i2c_timeout_ticks);
+                                          bmp280->i2c_timeout_ms);
 
     if (result != ESP_OK) {
         ESP_LOGE(TAG, "Unable to read ID register");
@@ -113,14 +152,14 @@ esp_err_t bmp280_reset(const BMP280 *bmp280) {
 
     // Write the reset command
     esp_err_t ret = i2c_write_register(bmp280->i2c_master_dev_handle, BMP280_REG_RESET, BMP280_RESET_VALUE,
-                                       bmp280->i2c_timeout_ticks);
+                                       bmp280->i2c_timeout_ms);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to write reset command to BMP280: %s", esp_err_to_name(ret));
         return ret;
     }
 
     // Wait for the I2C bus to finish all transactions
-    ret = i2c_wait_all_done(bmp280->i2c_master_bus_handle, pdTICKS_TO_MS(bmp280->i2c_timeout_ticks));
+    ret = i2c_wait_all_done(bmp280->i2c_master_bus_handle, bmp280->i2c_timeout_ms);
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to wait for BMP280 reset completion: %s", esp_err_to_name(ret));
         return ret;
@@ -128,11 +167,20 @@ esp_err_t bmp280_reset(const BMP280 *bmp280) {
 
     // Wait for initialization (im_update bit to clear)
     uint8_t status;
+    const int64_t deadline_us = esp_timer_get_time() + (int64_t)bmp280->i2c_timeout_ms * 1000;
     do {
-        ret = i2c_read_registers(bmp280->i2c_master_dev_handle, BMP280_REG_STATUS, &status, 1, bmp280->i2c_timeout_ticks);
+        ret = i2c_read_registers(bmp280->i2c_master_dev_handle, BMP280_REG_STATUS, &status, 1,
+                                 bmp280->i2c_timeout_ms);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Failed to read status register during reset: %s", esp_err_to_name(ret));
             return ret;
+        }
+        if ((status & BMP280_STATUS_IM_UPDATE) != 0U) {
+            if (esp_timer_get_time() >= deadline_us) {
+                ESP_LOGE(TAG, "Timed out waiting for BMP280 NVM copy");
+                return ESP_ERR_TIMEOUT;
+            }
+            vTaskDelay(1);
         }
     } while (status & BMP280_STATUS_IM_UPDATE); // Wait while im_update (Bit 0) is 1
 
@@ -144,6 +192,13 @@ esp_err_t bmp280_set_ctrl_meas(BMP280 *bmp280, const int oversampling_temp, cons
                                const int mode) {
     ESP_LOGI(TAG, "Setting BMP280 control measurement register");
 
+    if (bmp280 == NULL || oversampling_temp < BMP280_OSRS_T_SKIP ||
+        oversampling_temp > BMP280_OSRS_T_X16 || oversampling_press < BMP280_OSRS_P_SKIP ||
+        oversampling_press > BMP280_OSRS_P_X16 ||
+        (mode != BMP280_MODE_SLEEP && mode != BMP280_MODE_FORCED && mode != BMP280_MODE_NORMAL)) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
     // Store the oversampling values in the BMP280 structure
     bmp280->oversampling_temp = oversampling_temp;
     bmp280->oversampling_press = oversampling_press;
@@ -154,30 +209,46 @@ esp_err_t bmp280_set_ctrl_meas(BMP280 *bmp280, const int oversampling_temp, cons
                               mode; // Set normal mode
 
     // Write the CTRL_MEAS register to the sensor
-    return i2c_write_register(
+    const esp_err_t ret = i2c_write_register(
         bmp280->i2c_master_dev_handle,
         BMP280_REG_CTRL_MEAS,
         ctrl_meas,
-        bmp280->i2c_timeout_ticks);
+        bmp280->i2c_timeout_ms);
+    if (ret == ESP_OK) {
+        bmp280->expected_ctrl_meas = ctrl_meas;
+    }
+    return ret;
 }
 
 esp_err_t bmp280_set_config(BMP280 *bmp280, const uint8_t standby_time, const uint8_t filter) {
     ESP_LOGI(TAG, "Setting BMP280 configuration register");
 
     // Validate input parameters
-    if (standby_time > 7 || filter > 7) {
+    if (standby_time > BMP280_STANDBY_TIME_4000_MS || filter > BMP280_FILTER_COEFF_16) {
         ESP_LOGE(TAG, "Invalid standby_time or filter value: standby_time=%d, filter=%d", standby_time, filter);
         return ESP_ERR_INVALID_ARG;
     }
 
+    uint8_t ctrl_meas = 0;
+    esp_err_t ret = i2c_read_registers(
+        bmp280->i2c_master_dev_handle, BMP280_REG_CTRL_MEAS, &ctrl_meas, 1,
+        bmp280->i2c_timeout_ms);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+    if ((ctrl_meas & 0x03U) != BMP280_MODE_SLEEP) {
+        ESP_LOGE(TAG, "CONFIG can only be written while BMP280 is sleeping");
+        return ESP_ERR_INVALID_STATE;
+    }
+
     // Read the current CONFIG register value
     uint8_t config;
-    esp_err_t ret = i2c_read_registers(
+    ret = i2c_read_registers(
         bmp280->i2c_master_dev_handle,
         BMP280_REG_CONFIG,
         &config,
         1,
-        bmp280->i2c_timeout_ticks
+        bmp280->i2c_timeout_ms
     );
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to read CONFIG register: %s", esp_err_to_name(ret));
@@ -192,27 +263,64 @@ esp_err_t bmp280_set_config(BMP280 *bmp280, const uint8_t standby_time, const ui
         bmp280->i2c_master_dev_handle,
         BMP280_REG_CONFIG,
         config,
-        bmp280->i2c_timeout_ticks
+        bmp280->i2c_timeout_ms
     );
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to write CONFIG register: %s", esp_err_to_name(ret));
+    } else {
+        bmp280->expected_config = config;
     }
 
     return ret;
 }
 
-esp_err_t bmp280_read_temperature_pressure(const BMP280 *bmp280, int32_t *temperature, int32_t *pressure) {
+static esp_err_t bmp280_verify_operating_configuration(const BMP280 *bmp280) {
+    uint8_t chip_id = 0;
+    uint8_t ctrl_meas = 0;
+    uint8_t config = 0;
 
-    // Check if the sensor has completed its measurement
-    uint8_t status;
-    esp_err_t ret;
-    do {
-        ret = i2c_read_registers(bmp280->i2c_master_dev_handle, BMP280_REG_STATUS, &status, 1, bmp280->i2c_timeout_ticks);
-        if (ret != ESP_OK) {
-            ESP_LOGE(TAG, "Failed to read status register: %s", esp_err_to_name(ret));
-            return ret;
-        }
-    } while (status & BMP280_STATUS_MEASURING); // Wait while measuring (Bit 3) is 1
+    esp_err_t ret = i2c_read_registers(bmp280->i2c_master_dev_handle, BMP280_REG_ID,
+                                       &chip_id, 1, bmp280->i2c_timeout_ms);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+    ret = i2c_read_registers(bmp280->i2c_master_dev_handle, BMP280_REG_CTRL_MEAS,
+                             &ctrl_meas, 1, bmp280->i2c_timeout_ms);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+    ret = i2c_read_registers(bmp280->i2c_master_dev_handle, BMP280_REG_CONFIG,
+                             &config, 1, bmp280->i2c_timeout_ms);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    if (chip_id != BMP280_ID_VALUE || ctrl_meas != bmp280->expected_ctrl_meas ||
+        config != bmp280->expected_config) {
+        ESP_LOGW(TAG,
+                 "BMP280 configuration lost: id=0x%02x ctrl=0x%02x/0x%02x config=0x%02x/0x%02x",
+                 chip_id, ctrl_meas, bmp280->expected_ctrl_meas,
+                 config, bmp280->expected_config);
+        return ESP_ERR_INVALID_STATE;
+    }
+    return ESP_OK;
+}
+
+esp_err_t bmp280_read_temperature_pressure(const BMP280 *bmp280, int32_t *temperature, int32_t *pressure) {
+    if (bmp280 == NULL || temperature == NULL || pressure == NULL ||
+        bmp280->i2c_master_dev_handle == NULL) {
+        return ESP_ERR_INVALID_ARG;
+    }
+
+    esp_err_t ret = bmp280_verify_operating_configuration(bmp280);
+    if (ret != ESP_OK) {
+        return ret;
+    }
+
+    ret = bmp280_wait_for_measurement(bmp280);
+    if (ret != ESP_OK) {
+        return ret;
+    }
 
     // Read raw temperature and pressure data from the BMP280
     int32_t raw_temp, raw_press;
@@ -220,6 +328,10 @@ esp_err_t bmp280_read_temperature_pressure(const BMP280 *bmp280, int32_t *temper
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to read raw data: %s", esp_err_to_name(ret));
         return ret;
+    }
+    if (raw_temp == 0x80000 || raw_press == 0x80000) {
+        ESP_LOGW(TAG, "BMP280 returned reset/skipped raw measurement values");
+        return ESP_ERR_INVALID_RESPONSE;
     }
 
     // Use calibration data to calculate compensated temperature and pressure
@@ -243,7 +355,7 @@ esp_err_t bmp280_read_raw_data(const BMP280 *bmp280, int32_t *raw_temp, int32_t 
         BMP280_REG_PRESS_MSB, // Starting register for burst read
         data, // Buffer to hold the read data
         sizeof(data), // Number of bytes to read (6 for BMP280)
-        bmp280->i2c_timeout_ticks // Timeout duration for the I2C operation
+        bmp280->i2c_timeout_ms // Timeout duration for the I2C operation
     );
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to read BMP280 raw data: %d", ret);
@@ -260,6 +372,7 @@ esp_err_t bmp280_read_raw_data(const BMP280 *bmp280, int32_t *raw_temp, int32_t 
 
 esp_err_t bmp280_wait_for_measurement(const BMP280 *bmp280) {
     uint8_t status;
+    const int64_t deadline_us = esp_timer_get_time() + (int64_t)bmp280->i2c_timeout_ms * 1000;
 
     ESP_LOGI(TAG, "Checking if BMP280 is currently measuring...");
     do {
@@ -268,10 +381,17 @@ esp_err_t bmp280_wait_for_measurement(const BMP280 *bmp280) {
             BMP280_REG_STATUS,
             &status,
             1,
-            bmp280->i2c_timeout_ticks);
+            bmp280->i2c_timeout_ms);
         if (ret != ESP_OK) {
             ESP_LOGE(TAG, "Failed to read status register: %s", esp_err_to_name(ret));
             return ret;
+        }
+        if ((status & BMP280_STATUS_MEASURING) != 0U) {
+            if (esp_timer_get_time() >= deadline_us) {
+                ESP_LOGE(TAG, "Timed out waiting for BMP280 measurement");
+                return ESP_ERR_TIMEOUT;
+            }
+            vTaskDelay(1);
         }
     } while (status & BMP280_STATUS_MEASURING); // Wait while Bit 3 is 1
 

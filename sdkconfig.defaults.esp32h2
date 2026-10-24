@@ -22,3 +22,7 @@ CONFIG_USE_MINIMAL_MDNS=n
 
 # Disable STA for ESP32H2
 CONFIG_ENABLE_WIFI_STATION=n
+
+# BMP280 wiring defaults; override in menuconfig when using different pins.
+CONFIG_BMP280_I2C_SDA_GPIO=21
+CONFIG_BMP280_I2C_SCL_GPIO=22

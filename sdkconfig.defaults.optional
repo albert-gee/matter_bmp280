@@ -1,0 +1,4 @@
+# Optional configuration build coverage.
+CONFIG_OPENTHREAD_CLI=y
+CONFIG_ENABLE_OTA_REQUESTOR=y
+CONFIG_ENABLE_ENCRYPTED_OTA=y

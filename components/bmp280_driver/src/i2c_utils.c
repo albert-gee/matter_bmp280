@@ -16,6 +16,9 @@ esp_err_t i2c_init(const i2c_port_t i2c_port, const uint16_t i2c_address, const 
         return ESP_ERR_INVALID_ARG;
     }
 
+    *master_bus_handle = NULL;
+    *master_dev_handle = NULL;
+
     // Allocate and initialize an I2C master bus
     ESP_LOGI(TAG, "Initializing I2C master bus...");
     const i2c_master_bus_config_t bus_config = {
@@ -38,6 +41,7 @@ esp_err_t i2c_init(const i2c_port_t i2c_port, const uint16_t i2c_address, const 
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to probe I2C device at address 0x%02X: %s", i2c_address, esp_err_to_name(ret));
         i2c_del_master_bus(*master_bus_handle); // Cleanup bus
+        *master_bus_handle = NULL;
         return ret;
     }
 
@@ -52,6 +56,7 @@ esp_err_t i2c_init(const i2c_port_t i2c_port, const uint16_t i2c_address, const 
     if (ret != ESP_OK) {
         ESP_LOGE(TAG, "Failed to add I2C device to the bus: %s", esp_err_to_name(ret));
         i2c_del_master_bus(*master_bus_handle); // Cleanup bus
+        *master_bus_handle = NULL;
         return ret;
     }
 

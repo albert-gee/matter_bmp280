@@ -1,6 +1,6 @@
 # Matter-Based BMP280 Pressure and Temperature Sensor
 
-This project implements a Matter-compatible pressure and temperature sensor using an ESP32 microcontroller and the BMP280 sensor. The firmware integrates the BMP280 driver with ESP-Matter to enable seamless communication over the Matter protocol.
+This project implements a Matter-over-Thread pressure and temperature sensor for ESP32-H2 using a BMP280. Matter starts even when the sensor is absent; measurements remain null and the firmware retries the sensor with bounded I2C operations.
 
 ---
 
@@ -104,11 +104,11 @@ Running `get_matter` will now set up or refresh the esp-matter environment in an
 
 ## Wiring
 
-To connect the BMP280 sensor to the ESP32, use the following wiring instructions:
+To connect the BMP280 sensor to the ESP32-H2, use the following default wiring. The GPIOs are configurable under `BMP280 configuration` in menuconfig.
 
 ### BMP280 Pinout and Connections
 
-| BMP280 Pin | ESP32 Pin  |
+| BMP280 Pin | ESP32-H2 Pin |
 |------------|------------|
 | VCC        | 3.3V       |
 | GND        | GND        |
@@ -140,13 +140,13 @@ Use `menuconfig` to configure project-specific settings:
 idf.py menuconfig
 ```
 
-- Set the I2C GPIO pins to match your wiring (SDA: GPIO21, SCL: GPIO22).
+- Set `BMP280 I2C SDA GPIO` and `BMP280 I2C SCL GPIO` to match your wiring (defaults: GPIO21/GPIO22).
 - Enable or disable features like CHIP Shell or OTA based on your requirements.
 
-### Step 3. Set ESP32 as the Target Device
+### Step 3. Set ESP32-H2 as the Target Device
 
 ```bash
-idf.py set-target esp32
+idf.py set-target esp32h2
 ```
 
 ### Step 4. Build the Project

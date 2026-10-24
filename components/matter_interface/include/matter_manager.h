@@ -12,7 +12,7 @@
  * @param[in] event The Matter device event structure.
  * @param[in] arg   Additional argument provided by the caller.
  */
-void matter_event_callback(ChipDeviceEvent *event, intptr_t arg);
+void matter_event_callback(const ChipDeviceEvent *event, intptr_t arg);
 
 /**
  * @brief Handle identification cluster commands for a Matter endpoint.
@@ -55,10 +55,13 @@ esp_err_t attribute_update_callback(esp_matter::attribute::callback_type_t type,
 
 
 esp_err_t matter_init(uint16_t *temperature_sensor_endpoint_id, uint16_t *pressure_sensor_endpoint_id,
-                      float min_temperature, float max_temperature, float initial_temperature,
-                      float min_pressure, float max_pressure, float initial_pressure);
+                      float min_temperature, float max_temperature,
+                      float min_pressure, float max_pressure);
 
 esp_err_t matter_update_values(uint16_t temperature_endpoint_id, uint16_t pressure_sensor_endpoint_id,
                                int16_t new_temperature, int16_t new_pressure);
+
+esp_err_t matter_set_values_unavailable(uint16_t temperature_endpoint_id,
+                                        uint16_t pressure_sensor_endpoint_id);
 
 #endif //MATTER_MANAGER_H

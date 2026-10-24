@@ -7,11 +7,11 @@
 
 static int32_t t_fine;  // Declare t_fine as a global variable for reuse in pressure calculation
 
-esp_err_t bmp280_read_calibration_data(i2c_master_dev_handle_t master_device_handle, BMP280_CalibrationData *calibration_data, const uint32_t i2c_timeout_ticks) {
+esp_err_t bmp280_read_calibration_data(i2c_master_dev_handle_t master_device_handle, BMP280_CalibrationData *calibration_data, const uint32_t i2c_timeout_ms) {
     uint8_t read_buffer[24]; // Buffer to read all calibration data at once
 
     // Read 24 bytes of calibration data starting from register 0x88
-    const esp_err_t ret = i2c_read_registers(master_device_handle, BMP280_REG_DIG_T1, read_buffer, sizeof(read_buffer), i2c_timeout_ticks);
+    const esp_err_t ret = i2c_read_registers(master_device_handle, BMP280_REG_DIG_T1, read_buffer, sizeof(read_buffer), i2c_timeout_ms);
 
     if (ret == ESP_OK) {
 
@@ -48,10 +48,6 @@ int32_t bmp280_compensate_temperature(const int32_t raw_temp, const BMP280_Calib
 }
 
 int32_t bmp280_compensate_pressure(const int32_t raw_press, const BMP280_CalibrationData *cal) {
-    if (t_fine == 0) {
-        return 0; // Ensure t_fine is initialized properly from temperature compensation.
-    }
-
     // Calculate intermediate variables for compensation (datasheet Section 3.11.3).
     int64_t var1 = ((int64_t) t_fine) - 128000;
     int64_t var2 = var1 * var1 * (int64_t) cal->dig_P6;

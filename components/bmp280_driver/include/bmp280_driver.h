@@ -127,7 +127,9 @@ typedef struct {
     uint8_t oversampling_press; /**< Oversampling setting for pressure (0-5). */
     i2c_master_bus_handle_t i2c_master_bus_handle; /**< I2C bus handle. */
     i2c_master_dev_handle_t i2c_master_dev_handle; /**< I2C master device handle. */
-    uint32_t i2c_timeout_ticks; /**< Timeout for I2C operations in ticks. */
+    uint32_t i2c_timeout_ms; /**< Timeout for I2C operations in milliseconds. */
+    uint8_t expected_ctrl_meas; /**< CTRL_MEAS value expected during operation. */
+    uint8_t expected_config; /**< CONFIG value expected during operation. */
 } BMP280;
 
 /**
@@ -143,7 +145,7 @@ typedef struct {
  * @param bmp280 Pointer to a BMP280 structure to hold sensor state and configuration.
  * @param i2c_address I2C address of the BMP280 sensor (0x76 or 0x77 based on SDO pin configuration).
  * @param i2c_port I2C port to use (e.g., I2C_NUM_0 or I2C_NUM_1).
- * @param i2c_timeout_ticks Timeout for I2C operations in FreeRTOS ticks.
+ * @param i2c_timeout_ms Timeout for I2C operations in milliseconds.
  * @param i2c_clk_speed I2C clock speed in Hz (e.g., 100000 for 100 kHz).
  * @param sda_gpio GPIO pin for the I2C SDA line.
  * @param scl_gpio GPIO pin for the I2C SCL line.
@@ -155,9 +157,12 @@ typedef struct {
  *
  * @return ESP_OK on successful initialization, or an appropriate error code on failure.
  */
-esp_err_t bmp280_init(BMP280 *bmp280, uint16_t i2c_address, i2c_port_t i2c_port, uint32_t i2c_timeout_ticks,
+esp_err_t bmp280_init(BMP280 *bmp280, uint16_t i2c_address, i2c_port_t i2c_port, uint32_t i2c_timeout_ms,
     uint32_t i2c_clk_speed, gpio_num_t sda_gpio, gpio_num_t scl_gpio, uint8_t oversampling_temp,
     uint8_t oversampling_press, uint8_t mode, uint8_t standby_time, uint8_t filter);
+
+/** Release the I2C resources held by an initialized or partially initialized device. */
+esp_err_t bmp280_deinit(BMP280 *bmp280);
 
 /**
  * @brief Verifies the BMP280 sensor by reading and checking its chip ID.

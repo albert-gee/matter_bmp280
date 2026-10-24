@@ -1,0 +1,17 @@
+menu "BMP280 configuration"
+
+config BMP280_I2C_SDA_GPIO
+    int "BMP280 I2C SDA GPIO"
+    range 0 27
+    default 21
+    help
+        GPIO connected to the BMP280 SDA pin.
+
+config BMP280_I2C_SCL_GPIO
+    int "BMP280 I2C SCL GPIO"
+    range 0 27
+    default 22
+    help
+        GPIO connected to the BMP280 SCL pin.
+
+endmenu
